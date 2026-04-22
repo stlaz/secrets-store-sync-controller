@@ -12,6 +12,8 @@ import (
 	"k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/util/wait"
+
+	secretsyncv1alpha1 "sigs.k8s.io/secrets-store-sync-controller/api/secretsync/v1alpha1"
 )
 
 const (
@@ -100,4 +102,27 @@ func WaitForSecret(testCfg *TestConfig, secret *corev1.Secret) {
 	if err != nil {
 		testCfg.T.Fatalf("failed to wait for Secret %s/%s: %v", secret.Namespace, secret.Name, err)
 	}
+}
+
+func WaitForSecretForSecretSync(
+	testCfg *TestConfig,
+	secretSync *secretsyncv1alpha1.SecretSync,
+	expectedSecretData map[string][]byte,
+) {
+	secret := &corev1.Secret{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      secretSync.Name,
+			Namespace: secretSync.Namespace,
+			Labels:    map[string]string{"secrets-store.sync.x-k8s.io": ""},
+			OwnerReferences: []metav1.OwnerReference{{
+				APIVersion: "secret-sync.x-k8s.io/v1alpha1",
+				Kind:       "SecretSync",
+				Name:       secretSync.Name,
+				UID:        secretSync.UID,
+			}},
+		},
+		Data: expectedSecretData,
+	}
+
+	WaitForSecret(testCfg, secret)
 }
