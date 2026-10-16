@@ -6,6 +6,7 @@ import (
 	"time"
 
 	corev1 "k8s.io/api/core/v1"
+	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
 	secretscsiclientv1 "sigs.k8s.io/secrets-store-csi-driver/pkg/client/clientset/versioned/typed/apis/v1"
@@ -107,6 +108,9 @@ func TestSecretSyncsFailures(t *testing.T, f *e2elib.Framework) {
 			if err := e2elib.WaitForSecretSyncCondition(testCtx, t, testCfg.Clients.SSClient(), ssNamespace, secretSyncObj.Name, tc.expectedCondition, syncWaitTimeout); err != nil {
 				t.Fatalf("waiting for condition failed: %v", err)
 			}
+			if _, err := testCfg.Clients.KubeClients().CoreV1().Secrets(ssNamespace).Get(testCtx, secretSyncObj.Name, metav1.GetOptions{}); !apierrors.IsNotFound(err) {
+				t.Fatalf("expected no Secret %s/%s after failed reconciliation, got: %v", ssNamespace, secretSyncObj.Name, err)
+			}
 		})
 	}
 }
@@ -130,6 +134,14 @@ func TestSecretSyncSuccess(t *testing.T, f *e2elib.Framework) {
 			syncWaitTimeout,
 		); err != nil {
 			t.Fatalf("waiting for secret failed: %v", err)
+		}
+
+		// Preserve the Bats check that deleting a SecretSync removes its Secret.
+		if err := testCfg.Clients.SSClient().SecretSyncV1alpha1().SecretSyncs(testCfg.Namespace).Delete(testCtx, secretSyncObj.Name, metav1.DeleteOptions{}); err != nil {
+			t.Fatalf("delete SecretSync %s/%s: %v", testCfg.Namespace, secretSyncObj.Name, err)
+		}
+		if err := e2elib.WaitForSecretNotFound(testCtx, testCfg.Clients.KubeClients().CoreV1(), testCfg.Namespace, secretSyncObj.Name, syncWaitTimeout); err != nil {
+			t.Fatalf("Secret not garbage-collected after SecretSync deletion: %v", err)
 		}
 	})
 

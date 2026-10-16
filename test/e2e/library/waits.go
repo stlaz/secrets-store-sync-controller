@@ -10,6 +10,7 @@ import (
 	"github.com/google/go-cmp/cmp"
 
 	corev1 "k8s.io/api/core/v1"
+	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/util/wait"
@@ -94,6 +95,23 @@ func WaitForSecret(ctx context.Context, t *testing.T, secretClient corev1client.
 		}
 		return true, nil
 	})
+}
+
+func WaitForSecretNotFound(ctx context.Context, secretClient corev1client.SecretsGetter, namespace, name string, timeout time.Duration) error {
+	err := wait.PollUntilContextTimeout(ctx, pollingInterval, timeout, true, func(waitCtx context.Context) (bool, error) {
+		_, err := secretClient.Secrets(namespace).Get(waitCtx, name, metav1.GetOptions{})
+		if apierrors.IsNotFound(err) {
+			return true, nil
+		}
+		if err != nil {
+			return false, err
+		}
+		return false, nil
+	})
+	if err != nil {
+		return fmt.Errorf("wait for Secret %s/%s deletion: %w", namespace, name, err)
+	}
+	return nil
 }
 
 func WaitForSecretForSecretSync(ctx context.Context, t *testing.T,
